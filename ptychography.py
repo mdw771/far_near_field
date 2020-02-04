@@ -20,11 +20,11 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                              alpha=1e-7, alpha_d=None, alpha_b=None, gamma=1e-6, learning_rate=1.0,
                              output_folder=None, minibatch_size=None, save_intermediate=False, full_intermediate=False,
                              energy_ev=5000, psize_cm=1e-7, cpu_only=False, save_path='.',
-                             phantom_path='phantom', core_parallelization=True, free_prop_cm=None,
+                             phantom_path='phantom', core_parallelization=True,
                              multiscale_level=1, n_epoch_final_pass=None, initial_guess=None, n_batch_per_update=1,
                              dynamic_rate=True, probe_type='gaussian', probe_initial=None, probe_learning_rate=1e-3,
                              pupil_function=None, probe_circ_mask=0.9, finite_support_mask=None, forward_algorithm='fresnel',
-                             n_dp_batch=20, object_type='normal', poisson_multiplier=2e6, **kwargs):
+                             n_dp_batch=20, object_type='normal', cost_function='lsq', poisson_multiplier=2e6, free_prop_cm='inf', free_prop_method='TF', **kwargs):
 
     def split_tasks(arr, split_size):
         res = []
@@ -79,11 +79,11 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             subobj_ls = tf.stack(subobj_ls)
             if forward_algorithm == 'fresnel':
                 exiting = multislice_propagate_batch(subobj_ls[:, :, :, :, 0], subobj_ls[:, :, :, :, 1], probe_real, probe_imag,
-                                                     energy_ev, psize_cm * ds_level, h=h, free_prop_cm='inf',
+                                                     energy_ev, psize_cm * ds_level, h=h, free_prop_cm=free_prop_cm,
                                                      obj_batch_shape=[len(pos_batch), *probe_size, obj_size[-1]])
             elif forward_algorithm == 'fd':
                 exiting = multislice_propagate_fd(subobj_ls[:, :, :, :, 0], subobj_ls[:, :, :, :, 1], probe_real, probe_imag,
-                                                  energy_ev, psize_cm * ds_level, h=h, free_prop_cm='inf',
+                                                  energy_ev, psize_cm * ds_level, h=h, free_prop_cm=free_prop_cm,
                                                   obj_batch_shape=[len(pos_batch), *probe_size, obj_size[-1]])
             # loss += tf.reduce_mean(tf.squared_difference(tf.abs(exiting), tf.abs(this_prj_batch[i][ind:ind+len(pos_batch)]))) * n_pos
             # ind += len(pos_batch)
@@ -91,8 +91,10 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         exiting_ls = tf.concat(exiting_ls, 0)
         if probe_circ_mask is not None:
             exiting_ls = exiting_ls * probe_mask
-        # loss = tf.reduce_mean(tf.squared_difference(tf.abs(exiting_ls), tf.abs(this_prj_batch[i]))) * n_pos
-        loss = tf.reduce_mean(tf.abs(exiting_ls) ** 2 * poisson_multiplier - tf.abs(this_prj_batch[i]) ** 2 * poisson_multiplier * tf.log(tf.abs(exiting_ls) ** 2 * poisson_multiplier), name='loss')
+        if cost_function == 'lsq':
+            loss = tf.reduce_mean(tf.squared_difference(tf.abs(exiting_ls), tf.abs(this_prj_batch[i]))) * n_pos
+        elif cost_function == 'poisson':
+            loss = tf.reduce_mean(tf.abs(exiting_ls) ** 2 * poisson_multiplier - tf.abs(this_prj_batch[i]) ** 2 * poisson_multiplier * tf.log(tf.abs(exiting_ls) ** 2 * poisson_multiplier), name='loss')
 
         return loss
 

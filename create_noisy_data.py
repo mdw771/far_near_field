@@ -9,7 +9,7 @@ import time
 np.random.seed(int(time.time()))
 
 # src_fname = 'cone_256_foam_ptycho/data_cone_256_foam_1nm.h5'
-src_fname = 'cell/ptychography/data_cell_phase.h5'
+src_fname = 'cell/nf_ptychography/data_cell_phase.h5'
 grid_delta = np.load('cell/phantom/grid_delta.npy')
 n_sample_pixel = np.count_nonzero(grid_delta > 1e-10)
 print(n_sample_pixel)
@@ -17,7 +17,7 @@ print(n_sample_pixel)
 # src_fname = 'cone_256_filled_ptycho/data_cone_256_1nm_marc.h5'
 # dest_fname = 'cone_256_filled_ptycho/data_cone_256_1nm_marc_n2e3_2.h5'
 
-for n_ph_tx in ['1.75e6', '1.75e7', '1.75e8']:
+for n_ph_tx in ['1e4', '4e4', '1e5', '4e5', '1e6', '1.75e6', '4e6', '1e7', '1.75e7', '4e7', '1e8', '1.75e8', '4e8', '1e9']:
     for postfix in ['', '_ref']:
 
         n_ph = float(n_ph_tx) / n_sample_pixel
@@ -50,6 +50,7 @@ for n_ph_tx in ['1.75e6', '1.75e7', '1.75e8']:
             n_ex *= (float(grid_delta.size) / n_sample_pixel)
             # total photons per spot
             n_ex /= o.shape[1]
+            print(o.shape[1])
 
             for i in trange(o.shape[0]):
                 for j in range(o.shape[1]):

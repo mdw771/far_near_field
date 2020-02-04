@@ -177,10 +177,11 @@ def get_kernel(dist_nm, lmbda_nm, voxel_nm, grid_shape):
     v_max = 1. / (2. * voxel_nm[1])
     u, v = gen_mesh([v_max, u_max], grid_shape[0:2])
     # H = np.exp(1j * k * dist_nm * np.sqrt(1 - lmbda_nm**2 * (u**2 + v**2)))
+    ###
     try:
-        H = np.exp(1j * k * dist_nm) * np.exp(-1j * PI * lmbda_nm * dist_nm * (u**2 + v**2))
+        H = np.exp(-1j * PI * lmbda_nm * dist_nm * (u**2 + v**2))
     except:
-        H = tf.exp(1j * k * dist_nm) * tf.exp(-1j * PI * lmbda_nm * dist_nm * (u ** 2 + v ** 2))
+        H = tf.exp(-1j * PI * lmbda_nm * dist_nm * (u ** 2 + v ** 2))
 
     return H
 
@@ -205,11 +206,10 @@ def get_kernel_ir(dist_nm, lmbda_nm, voxel_nm, grid_shape):
     y = np.arange(ymin, ymin + size_nm[0], dy)
     x, y = np.meshgrid(x, y)
     try:
-        h = np.exp(1j * k * dist_nm) / (1j * lmbda_nm * dist_nm) * np.exp(1j * k / (2 * dist_nm) * (x ** 2 + y ** 2))
+        h = np.exp(1j * k / (2 * dist_nm) * (x ** 2 + y ** 2))
         H = np_fftshift(fft2(h)) * voxel_nm[0] * voxel_nm[1]
-        dxchange.write_tiff(x, '2d_512/monitor_output/x', dtype='float32', overwrite=True)
     except:
-        h = tf.exp(1j * k * dist_nm) / (1j * lmbda_nm * dist_nm) * tf.exp(1j * k / (2 * dist_nm) * (x ** 2 + y ** 2))
+        h = tf.exp(1j * k / (2 * dist_nm) * (x ** 2 + y ** 2))
         # h = tf.convert_to_tensor(h, dtype='complex64')
         H = fftshift(tf.fft2d(h)) * voxel_nm[0] * voxel_nm[1]
 
@@ -429,7 +429,7 @@ def multislice_propagate(grid_delta, grid_beta, probe_real, probe_imag, energy_e
     return wavefront
 
 
-def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, probe_imag, energy_ev, psize_cm, h=None, free_prop_cm=None, obj_batch_shape=None, type='plane', **kwargs):
+def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, probe_imag, energy_ev, psize_cm, h=None, free_prop_cm=None, free_prop_method='TF', obj_batch_shape=None, type='plane', **kwargs):
     """
     :param type: str, 'plane' or 'projection'
     :param kwargs: if 'type' is 'projection', supply 's_r_cm'.
@@ -497,9 +497,8 @@ def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, pr
                 dist_nm = free_prop_cm * 1e7
                 l = np.prod(size_nm)**(1. / 3)
                 crit_samp = lmbda_nm * dist_nm / l
-                algorithm = 'TF' if mean_voxel_nm > crit_samp else 'IR'
-                algorithm = 'TF'
-                if algorithm == 'TF':
+                # free_prop_method = 'TF' if mean_voxel_nm > crit_samp else 'IR'
+                if free_prop_method == 'TF':
                     h = get_kernel(dist_nm, lmbda_nm, voxel_nm, grid_shape)
                     wavefront = tf.ifft2d(ifftshift(fftshift(tf.fft2d(wavefront)) * h))
                 else:

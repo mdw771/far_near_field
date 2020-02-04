@@ -24,7 +24,7 @@ def reconstruct_fullfield(fname, theta_st=0, theta_end=PI, n_epochs='auto', crit
                           multiscale_level=1, n_epoch_final_pass=None, initial_guess=None, n_batch_per_update=5,
                           dynamic_rate=True, probe_type='plane', probe_initial=None, probe_learning_rate=1e-3,
                           pupil_function=None, theta_downsample=None, forward_algorithm='fresnel', random_theta=True,
-                          object_type='normal', poisson_multiplier='2e6', **kwargs):
+                          object_type='normal', cost_function='lsq', poisson_multiplier='2e6', **kwargs):
     """
     Reconstruct a beyond depth-of-focus object.
     :param fname: Filename and path of raw data file. Must be in HDF5 format.
@@ -99,8 +99,10 @@ def reconstruct_fullfield(fname, theta_st=0, theta_end=PI, n_epochs='auto', crit
                                                         probe_real, probe_imag, energy_ev,
                                                         psize_cm * ds_level, free_prop_cm=free_prop_cm,
                                                         obj_batch_shape=[minibatch_size, *obj_size])
-        # loss = tf.reduce_mean(tf.squared_difference(tf.abs(exiting_batch), tf.abs(this_prj_batch)), name='loss')
-        loss = tf.reduce_mean(tf.abs(exiting_batch) ** 2 * poisson_multiplier - tf.abs(this_prj_batch) ** 2 * poisson_multiplier * tf.log(tf.abs(exiting_batch) ** 2  * poisson_multiplier), name='loss')
+        if cost_function == 'lsq':
+            loss = tf.reduce_mean(tf.squared_difference(tf.abs(exiting_batch), tf.abs(this_prj_batch)), name='loss')
+        elif cost_function == 'poisson':
+            loss = tf.reduce_mean(tf.abs(exiting_batch) ** 2 * poisson_multiplier - tf.abs(this_prj_batch) ** 2 * poisson_multiplier * tf.log(tf.abs(exiting_batch) ** 2  * poisson_multiplier), name='loss')
         return loss, exiting_batch
 
     # import Horovod or its fake shell

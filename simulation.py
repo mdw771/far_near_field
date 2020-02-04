@@ -163,7 +163,7 @@ def create_fullfield_data_numpy(energy_ev, psize_cm, free_prop_cm, n_theta, phan
 
 def create_ptychography_data(energy_ev, psize_cm, n_theta, phantom_path, save_folder, fname, probe_pos,
                              probe_type='gaussian', probe_size=(72, 72), wavefront_initial=None,
-                             theta_st=0, theta_end=2*PI, probe_circ_mask=0.9, n_dp_batch=20, **kwargs):
+                             theta_st=0, theta_end=2*PI, probe_circ_mask=0.9, n_dp_batch=20, free_prop_cm=None, free_prop_method='TF', **kwargs):
     """
     If probe_type is 'gaussian', supply parameters 'probe_mag_sigma', 'probe_phase_sigma', 'probe_phase_max'.
     """
@@ -208,7 +208,7 @@ def create_ptychography_data(energy_ev, psize_cm, n_theta, phantom_path, save_fo
             subobj_ls = tf.stack(subobj_ls)
             exiting = multislice_propagate_batch(subobj_ls[:, :, :, :, 0], subobj_ls[:, :, :, :, 1], probe_real,
                                                  probe_imag,
-                                                 energy_ev, psize_cm, h=h, free_prop_cm='inf',
+                                                 energy_ev, psize_cm, h=h, free_prop_cm=free_prop_cm, free_prop_method=free_prop_method,
                                                  obj_batch_shape=[len(pos_batch), *probe_size, obj_size[-1]])
             exiting_ls.append(exiting)
         exiting_ls = tf.concat(exiting_ls, 0)

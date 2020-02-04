@@ -38,6 +38,7 @@ params_2d_cell = {
                'forward_algorithm': 'fresnel',
                'object_type': 'phase_only',
                'poisson_multiplier': 2e6,
+               'free_prop_method': 'TF',
                'kwargs': {'probe_mag_sigma': 100,
                                'probe_phase_sigma': 100,
                                'probe_phase_max': 0.5},
@@ -47,7 +48,8 @@ params_2d_cell = {
 params = params_2d_cell
 
 # n_ls = ['nonoise', 'n1e9', 'n1e8', 'n1e7', 'n1e6', 'n1e5', 'n1e4']
-n_ls = ['n4e8', 'n4e7', 'n4e6', 'n4e5', 'n4e4', 'n1.75e8', 'n1.75e7', 'n1.75e6']
+n_ls = ['nonoise']
+# n_ls = ['n4e8', 'n4e7', 'n4e6', 'n4e5', 'n4e4', 'n1.75e8', 'n1.75e7', 'n1.75e6']
 # n_ls = [x + '_ref' for x in n_ls]
 
 
@@ -62,6 +64,6 @@ for n_ph in n_ls:
         else:
             n_ph_1 = float(n_ph[1:])
         params['poisson_multiplier'] = n_ph_1 / 5e4
-    params['output_folder'] = n_ph
+    params['output_folder'] = os.path.join(params['cost_function'], n_ph)
 
     reconstruct_fullfield(**params)
