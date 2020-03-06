@@ -26,7 +26,7 @@ save_folder = 'cell/nf_ptychography'
 # save_folder = 'cone_256_foam_ptycho'
 # fname = 'data_cone_256_foam_1nm.h5'
 fname = 'data_cell_phase.h5'
-probe_size = [72, 72]
+probe_size = [768, 768]
 # probe_size = [18, 18]
 probe_mag_sigma = 6
 # probe_mag_sigma = 2
@@ -35,7 +35,12 @@ probe_phase_sigma = 6
 probe_phase_max = 0.5
 # free_prop_cm = 'inf'
 free_prop_cm = 0.00040322580645161285
-free_prop_method = 'IR'
+free_prop_method = 'TF'
+pad_probe = 0
+crop_probe = 128
+probe_type = 'fixed'
+probe_initial = [np.ones([768, 768]), dxchange.read_tiff('cell/nf_ptychography/probe_phase.tiff')]
+# probe_initial = None
 # ============================================
 
 # probe_mag = np.ones([img_dim, img_dim], dtype=np.float32)
@@ -47,11 +52,16 @@ free_prop_method = 'IR'
 # probe_pos = [(y, x) for y in np.arange(23) * 12 for x in np.arange(23) * 12 ]
 # probe_pos = [(y, x) for y in np.linspace(340, 665, 27) for x in np.linspace(340, 665, 27)]
 # probe_pos = [(y, x) for y in np.arange(33) * 10 for x in np.arange(34) * 10] # ORIGINAL GRID
-probe_pos = [(y, x) for y in np.arange(66) * 5 for x in np.arange(68) * 5]
+probe_pos = [(y, x) for y in np.arange(4) * 60 + 60 for x in np.arange(4) * 60 + 60]
+# probe_pos = [(y, x) for y in np.arange(66) * 5 for x in np.arange(68) * 5]
+# probe_pos = [(y, x) for y in np.arange(1) * 150 for x in np.arange(1) * 150]
 # probe_pos = [(y, x) for y in np.linspace(9, 55, 23) for x in np.linspace(9, 55, 23)]
 # probe_pos = [(y, x) for y in np.linspace(18, 120, 35) for x in np.linspace(54, 198, 49)] + \
 #             [(y, x) for y in np.linspace(120, 222, 35) for x in np.linspace(22, 230, 70)]
 
 create_ptychography_data(energy_ev, psize_cm, n_theta, phantom_path, save_folder, fname, probe_pos,
-                         probe_type='gaussian', probe_size=probe_size, theta_st=theta_st, theta_end=theta_end,
-                         probe_mag_sigma=probe_mag_sigma, probe_phase_sigma=probe_phase_sigma, probe_phase_max=probe_phase_max, probe_circ_mask=None, free_prop_cm=free_prop_cm, free_prop_method=free_prop_method)
+                         probe_type=probe_type, probe_size=probe_size, theta_st=theta_st, theta_end=theta_end,
+                         probe_mag_sigma=probe_mag_sigma, probe_phase_sigma=probe_phase_sigma,
+                         probe_phase_max=probe_phase_max, probe_circ_mask=None, free_prop_cm=free_prop_cm,
+                         free_prop_method=free_prop_method, pad_probe=pad_probe, crop_probe=crop_probe,
+                         probe_initial=probe_initial)

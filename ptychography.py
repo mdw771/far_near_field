@@ -16,15 +16,15 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 PI = 3.1415927
 
 
-def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0, theta_end=PI, theta_downsample=None, n_epochs='auto', crit_conv_rate=0.03, max_nepochs=200,
+def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0, theta_end=PI, theta_downsample=None, n_epochs='auto', crit_conv_rate=0.005, max_nepochs=200,
                              alpha=1e-7, alpha_d=None, alpha_b=None, gamma=1e-6, learning_rate=1.0,
                              output_folder=None, minibatch_size=None, save_intermediate=False, full_intermediate=False,
                              energy_ev=5000, psize_cm=1e-7, cpu_only=False, save_path='.',
                              phantom_path='phantom', core_parallelization=True,
                              multiscale_level=1, n_epoch_final_pass=None, initial_guess=None, n_batch_per_update=1,
                              dynamic_rate=True, probe_type='gaussian', probe_initial=None, probe_learning_rate=1e-3,
-                             pupil_function=None, probe_circ_mask=0.9, finite_support_mask=None, forward_algorithm='fresnel',
-                             n_dp_batch=20, object_type='normal', cost_function='lsq', poisson_multiplier=2e6, free_prop_cm='inf', free_prop_method='TF', **kwargs):
+                             pupil_function=None, probe_circ_mask=None, finite_support_mask=None, forward_algorithm='fresnel',
+                             n_dp_batch=20, object_type='normal', cost_function='lsq', poisson_multiplier=2e6, free_prop_cm='inf', free_prop_method='TF', pad_probe=0, crop_probe=0, **kwargs):
 
     def split_tasks(arr, split_size):
         res = []
@@ -77,10 +77,11 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                 subobj_ls.append(subobj)
 
             subobj_ls = tf.stack(subobj_ls)
+
             if forward_algorithm == 'fresnel':
                 exiting = multislice_propagate_batch(subobj_ls[:, :, :, :, 0], subobj_ls[:, :, :, :, 1], probe_real, probe_imag,
-                                                     energy_ev, psize_cm * ds_level, h=h, free_prop_cm=free_prop_cm,
-                                                     obj_batch_shape=[len(pos_batch), *probe_size, obj_size[-1]])
+                                                     energy_ev, psize_cm * ds_level, h=h, free_prop_cm=free_prop_cm, free_prop_method=free_prop_method,
+                                                     obj_batch_shape=[len(pos_batch), *probe_size, obj_size[-1]], pad_probe=pad_probe, crop_probe=crop_probe)
             elif forward_algorithm == 'fd':
                 exiting = multislice_propagate_fd(subobj_ls[:, :, :, :, 0], subobj_ls[:, :, :, :, 1], probe_real, probe_imag,
                                                   energy_ev, psize_cm * ds_level, h=h, free_prop_cm=free_prop_cm,
@@ -166,10 +167,20 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                     multiscale_level, cpu_only)
         if abs(PI - theta_end) < 1e-3:
             output_folder += '_180'
-    print_flush('Output folder is {}'.format(output_folder))
 
     if save_path != '.':
         output_folder = os.path.join(save_path, output_folder)
+    print_flush('Output folder is {}'.format(output_folder))
+
+    if cpu_only:
+        sess = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}, allow_soft_placement=True))
+        device_placement = '/device:CPU:0'
+    else:
+        config = tf.ConfigProto(log_device_placement=True)
+        config.gpu_options.allow_growth = True
+        config.gpu_options.visible_device_list = str(hvd.local_rank())
+        sess = tf.Session(config=config)
+        device_placement = '/GPU:0'
 
     for ds_level in range(multiscale_level - 1, -1, -1):
 
@@ -301,8 +312,12 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         elif probe_type == 'fixed':
             probe_mag, probe_phase = probe_initial
             probe_real, probe_imag = mag_phase_to_real_imag(probe_mag, probe_phase)
+            print(probe_initial)
             probe_real = tf.constant(probe_real, dtype=tf.float32)
             probe_imag = tf.constant(probe_imag, dtype=tf.float32)
+        elif probe_type == 'plane':
+            probe_real = tf.ones(probe_size, dtype=tf.float32)
+            probe_imag = tf.zeros(probe_size, dtype=tf.float32)
         else:
             raise ValueError('Invalid wavefront type. Choose from \'plane\', \'fixed\', \'optimizable\'.')
 
@@ -313,12 +328,13 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         kernel = get_kernel(delta_nm, lmbda_nm, voxel_nm, probe_size)
         h = tf.convert_to_tensor(kernel, dtype=tf.complex64, name='kernel')
 
-        print_flush('Building physical model...')
-        t00 = time.time()
-        loss = tf.constant(0.)
-        for j in range(0, minibatch_size):
-            loss += rotate_and_project(j, obj_delta, obj_beta)
-        print_flush('Physical model built in {} s.'.format(time.time() - t00))
+        with tf.device(device_placement):
+            print_flush('Building physical model...')
+            t00 = time.time()
+            loss = tf.constant(0.)
+            for j in range(0, minibatch_size):
+                loss += rotate_and_project(j, obj_delta, obj_beta)
+            print_flush('Physical model built in {} s.'.format(time.time() - t00))
 
         if alpha_d is None:
             reg_term = alpha * (tf.norm(obj_delta, ord=1) + tf.norm(obj_beta, ord=1)) + gamma * total_variation_3d(obj_delta)
@@ -400,19 +416,11 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
 
-        if cpu_only:
-            sess = tf.Session(config=tf.ConfigProto(device_count = {'GPU': 0}, allow_soft_placement=True))
-        else:
-            config = tf.ConfigProto(log_device_placement=False)
-            config.gpu_options.allow_growth = True
-            config.gpu_options.visible_device_list = str(hvd.local_rank())
-            sess = tf.Session(config=config)
-
         sess.run(tf.global_variables_initializer())
         hvd.broadcast_global_variables(0)
 
         if hvd.rank() == 0:
-            summary_writer = tf.summary.FileWriter(os.path.join(output_folder, 'tb'), sess.graph)
+            # summary_writer = tf.summary.FileWriter(os.path.join(output_folder, 'tb'), sess.graph)
             create_summary(output_folder, locals(), preset='ptycho')
             print_flush('Summary text created.')
 
@@ -504,14 +512,14 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                         probe_imag = probe_imag * pupil_function
 
                     # run Tensorboard summarizer
-                    if hvd.rank() == 0 and i_batch % 20 == 0:
-                        summary_writer.add_run_metadata(run_metadata, '{}_{}'.format(epoch, i_batch))
-                        summary_writer.add_summary(summary_str, i_batch)
-                if hvd.rank() == 0:
-                    try:
-                        summary_writer.close()
-                    except:
-                        pass
+                    # if hvd.rank() == 0 and i_batch % 20 == 0:
+                    #     summary_writer.add_run_metadata(run_metadata, '{}_{}'.format(epoch, i_batch))
+                    #     summary_writer.add_summary(summary_str, i_batch)
+                # if hvd.rank() == 0:
+                #     try:
+                #         summary_writer.close()
+                #     except:
+                #         pass
 
             else:
                 if probe_type == 'optimizable':
@@ -612,9 +620,9 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
 
             x = len(loss_ls)
             plt.figure()
-            plt.semilogy(range(x), loss_ls, label='Total loss')
-            plt.semilogy(range(x), reg_ls, label='Regularizer')
-            plt.semilogy(range(x), error_ls, label='Error term')
+            plt.plot(range(x), loss_ls, label='Total loss')
+            plt.plot(range(x), reg_ls, label='Regularizer')
+            plt.plot(range(x), error_ls, label='Error term')
             plt.legend()
             try:
                 os.makedirs(os.path.join(output_folder, 'convergence'))
@@ -624,7 +632,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             np.save(os.path.join(output_folder, 'convergence', 'total_loss_ds_{}'.format(ds_level)), loss_ls)
             np.save(os.path.join(output_folder, 'convergence', 'reg_ds_{}'.format(ds_level)), reg_ls)
             np.save(os.path.join(output_folder, 'convergence', 'error_ds_{}'.format(ds_level)), error_ls)
-            summary_writer.close()
+            # summary_writer.close()
 
             print_flush('Clearing current graph...')
         sess.run(tf.global_variables_initializer())

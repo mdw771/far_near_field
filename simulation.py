@@ -162,8 +162,9 @@ def create_fullfield_data_numpy(energy_ev, psize_cm, free_prop_cm, n_theta, phan
 
 
 def create_ptychography_data(energy_ev, psize_cm, n_theta, phantom_path, save_folder, fname, probe_pos,
-                             probe_type='gaussian', probe_size=(72, 72), wavefront_initial=None,
-                             theta_st=0, theta_end=2*PI, probe_circ_mask=0.9, n_dp_batch=20, free_prop_cm=None, free_prop_method='TF', **kwargs):
+                             probe_type='gaussian', probe_size=(72, 72),
+                             theta_st=0, theta_end=2*PI, probe_circ_mask=0.9, n_dp_batch=20, free_prop_cm=None,
+                             free_prop_method='TF', pad_probe=0, crop_probe=0, probe_initial=None, **kwargs):
     """
     If probe_type is 'gaussian', supply parameters 'probe_mag_sigma', 'probe_phase_sigma', 'probe_phase_max'.
     """
@@ -209,7 +210,7 @@ def create_ptychography_data(energy_ev, psize_cm, n_theta, phantom_path, save_fo
             exiting = multislice_propagate_batch(subobj_ls[:, :, :, :, 0], subobj_ls[:, :, :, :, 1], probe_real,
                                                  probe_imag,
                                                  energy_ev, psize_cm, h=h, free_prop_cm=free_prop_cm, free_prop_method=free_prop_method,
-                                                 obj_batch_shape=[len(pos_batch), *probe_size, obj_size[-1]])
+                                                 obj_batch_shape=[len(pos_batch), *probe_size, obj_size[-1]], pad_probe=pad_probe, crop_probe=crop_probe)
             exiting_ls.append(exiting)
         exiting_ls = tf.concat(exiting_ls, 0)
         return exiting_ls
@@ -228,7 +229,7 @@ def create_ptychography_data(energy_ev, psize_cm, n_theta, phantom_path, save_fo
     obj_init[:, :, :, 0] = grid_delta
     obj_init[:, :, :, 1] = grid_beta
     obj_size = grid_delta.shape
-    obj = tf.Variable(initial_value=obj_init, dtype=tf.float32)
+    obj = tf.Variable(initial_value=obj_init, dtype=tf.float64)
 
     # list of angles
     theta_ls = -np.linspace(theta_st, theta_end, n_theta)
@@ -241,7 +242,7 @@ def create_ptychography_data(energy_ev, psize_cm, n_theta, phantom_path, save_fo
     lmbda_nm = 1240. / energy_ev
     delta_nm = voxel_nm[-1]
     kernel = get_kernel(delta_nm, lmbda_nm, voxel_nm, probe_size)
-    h = tf.convert_to_tensor(kernel, dtype=tf.complex64, name='kernel')
+    h = tf.convert_to_tensor(kernel, dtype=tf.complex128, name='kernel')
 
     # create data file
     flag_overwrite = 'y'
@@ -250,7 +251,7 @@ def create_ptychography_data(energy_ev, psize_cm, n_theta, phantom_path, save_fo
     if flag_overwrite in ['y', 'Y']:
         f = h5py.File(os.path.join(save_folder, fname), 'w')
         grp = f.create_group('exchange')
-        dat = grp.create_dataset('data', shape=(n_theta, len(probe_pos), probe_size[0], probe_size[1]), dtype=np.complex64)
+        dat = grp.create_dataset('data', shape=(n_theta, len(probe_pos), probe_size[0] - 2 * crop_probe, probe_size[1] - 2 * crop_probe), dtype=np.complex64)
     else:
         return
 
@@ -267,6 +268,14 @@ def create_ptychography_data(energy_ev, psize_cm, n_theta, phantom_path, save_fo
             probe_mask = tomopy.circ_mask(np.ones_like(probe_real)[np.newaxis, :, :], axis=0, ratio=probe_circ_mask)
             probe_mask = gaussian_filter(np.squeeze(probe_mask), 3)
             probe_mask = tf.constant(probe_mask, dtype=tf.complex64)
+    elif probe_type == 'plane':
+        probe_real = np.ones(probe_size)
+        probe_imag = np.zeros(probe_size)
+    elif probe_type == 'fixed':
+        probe_mag, probe_phase = probe_initial
+        probe_real, probe_imag = mag_phase_to_real_imag(probe_mag, probe_phase)
+        probe_real = tf.constant(probe_real, dtype=tf.float32)
+        probe_imag = tf.constant(probe_imag, dtype=tf.float32)
 
     waveset = rotate_and_project(i, obj)
 

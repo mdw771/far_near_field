@@ -4,7 +4,6 @@ from constants import *
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="-1"
 
-
 params_2d_cell = {
                'fname': 'data_cell_phase.h5',
                 # 'fname': 'data_cell_phase_{}.h5'.format(nph),

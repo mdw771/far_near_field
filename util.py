@@ -206,12 +206,13 @@ def get_kernel_ir(dist_nm, lmbda_nm, voxel_nm, grid_shape):
     y = np.arange(ymin, ymin + size_nm[0], dy)
     x, y = np.meshgrid(x, y)
     try:
-        h = np.exp(1j * k / (2 * dist_nm) * (x ** 2 + y ** 2))
-        H = np_fftshift(fft2(h)) * voxel_nm[0] * voxel_nm[1]
+        raise Exception
+        h = np.exp(1j * k * dist_nm) / (1j * lmbda_nm * dist_nm) * np.exp(1j * k / (2 * dist_nm) * (x ** 2 + y ** 2))
+        H = np_fftshift(fft2(h))
     except:
-        h = tf.exp(1j * k / (2 * dist_nm) * (x ** 2 + y ** 2))
+        h = tf.exp(1j * k * dist_nm) / (1j * lmbda_nm * dist_nm) * tf.exp(1j * k / (2 * dist_nm) * (x ** 2 + y ** 2))
         # h = tf.convert_to_tensor(h, dtype='complex64')
-        H = fftshift(tf.fft2d(h)) * voxel_nm[0] * voxel_nm[1]
+        H = fftshift(tf.fft2d(h))
 
     return H
 
@@ -429,7 +430,7 @@ def multislice_propagate(grid_delta, grid_beta, probe_real, probe_imag, energy_e
     return wavefront
 
 
-def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, probe_imag, energy_ev, psize_cm, h=None, free_prop_cm=None, free_prop_method='TF', obj_batch_shape=None, type='plane', **kwargs):
+def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, probe_imag, energy_ev, psize_cm, h=None, free_prop_cm=None, free_prop_method='TF', obj_batch_shape=None, type='plane', pad_probe=0, crop_probe=0, **kwargs):
     """
     :param type: str, 'plane' or 'projection'
     :param kwargs: if 'type' is 'projection', supply 's_r_cm'.
@@ -494,16 +495,26 @@ def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, pr
             if type == 'projection':
                 wavefront, m = free_propagate_paraxial(wavefront, free_prop_cm, s_r_cm + psize_cm * obj_batch_shape[-1], lmbda_nm, psize_cm)
             else:
+                if pad_probe > 0:
+                    wavefront = tf.pad(wavefront, ((0, 0), (pad_probe, pad_probe), (pad_probe, pad_probe)), mode='CONSTANT', constant_values=0)
+
                 dist_nm = free_prop_cm * 1e7
-                l = np.prod(size_nm)**(1. / 3)
-                crit_samp = lmbda_nm * dist_nm / l
+                # l = np.prod(size_nm)**(1. / 3)
+                # crit_samp = lmbda_nm * dist_nm / l
                 # free_prop_method = 'TF' if mean_voxel_nm > crit_samp else 'IR'
                 if free_prop_method == 'TF':
-                    h = get_kernel(dist_nm, lmbda_nm, voxel_nm, grid_shape)
+                    h = get_kernel(dist_nm, lmbda_nm, voxel_nm, np.array(grid_shape) + np.array([pad_probe * 2, pad_probe * 2, 0]))
+                    h = tf.cast(h, dtype='complex64')
                     wavefront = tf.ifft2d(ifftshift(fftshift(tf.fft2d(wavefront)) * h))
+
                 else:
                     h = get_kernel_ir(dist_nm, lmbda_nm, voxel_nm, grid_shape)
+                    h = tf.cast(h, dtype='complex64')
                     wavefront = ifftshift(tf.ifft2d(fftshift(tf.fft2d(wavefront)) * h))
+            if pad_probe > 0:
+                wavefront = wavefront[:, pad_probe:-pad_probe, pad_probe:-pad_probe]
+            if crop_probe > 0:
+                wavefront = wavefront[:, crop_probe:-crop_probe, crop_probe:-crop_probe]
     return wavefront
 
 

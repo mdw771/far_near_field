@@ -10,7 +10,11 @@ np.random.seed(int(time.time()))
 
 # src_fname = 'cone_256_foam_ptycho/data_cone_256_foam_1nm.h5'
 src_fname = 'cell/nf_ptychography/data_cell_phase.h5'
-grid_delta = np.load('cell/phantom/grid_delta.npy')
+# src_fname = 'cell/ptychography_coarse/data_cell_phase.h5'
+# src_fname = 'cell/nf_ptychography_coarse/data_cell_phase.h5'
+# src_fname = 'cell/ptychography_fine/data_cell_phase.h5'
+grid_delta = np.load('cell/ptychography/phantom/grid_delta.npy')
+grid_size = [325, 325]
 n_sample_pixel = np.count_nonzero(grid_delta > 1e-10)
 print(n_sample_pixel)
 
@@ -27,7 +31,7 @@ for n_ph_tx in ['1e4', '4e4', '1e5', '4e5', '1e6', '1.75e6', '4e6', '1e7', '1.75
 
 
         is_ptycho = False
-        if 'ptycho' in src_fname:
+        if 'ptycho' in src_fname and 'nf' not in src_fname:
             is_ptycho = True
 
         o = h5py.File(src_fname, 'r')['exchange/data']
@@ -47,7 +51,11 @@ for n_ph_tx in ['1e4', '4e4', '1e5', '4e5', '1e6', '1.75e6', '4e6', '1e7', '1.75
             # total photons received by sample
             n_ex = n_ph * n_sample_pixel
             # total photons per image
-            n_ex *= (float(grid_delta.size) / n_sample_pixel)
+            print('Far-field ptychography data')
+            n_ex *= (np.prod(grid_size) / n_sample_pixel)
+            print('CHECK IF THIS IS THE CORRECT SCAN SIZE AND SAMPLE AREA:')
+            print(grid_size, np.prod(grid_size), n_sample_pixel)
+            time.sleep(3)
             # total photons per spot
             n_ex /= o.shape[1]
             print(o.shape[1])
@@ -63,7 +71,7 @@ for n_ph_tx in ['1e4', '4e4', '1e5', '4e5', '1e6', '1.75e6', '4e6', '1e7', '1.75
                     pro_o_inten_scaled = prj_o_inten * multiplier
                     # dc_intensity = prj_o_inten[int(o.shape[-2] / 2), int(o.shape[-1] / 2)]
                     # prj_o_inten_norm = prj_o_inten / dc_intensity
-                    print(n_ph)
+                    # print(n_ph)
                     prj_o_inten_noisy = np.random.poisson(pro_o_inten_scaled)
                     prj_o_inten_noisy = prj_o_inten_noisy / multiplier
                     noise = prj_o_inten_noisy - prj_o_inten
@@ -72,8 +80,29 @@ for n_ph_tx in ['1e4', '4e4', '1e5', '4e5', '1e6', '1.75e6', '4e6', '1e7', '1.75
                     data = np.sqrt(prj_o_inten_noisy)
                     n[i, j] = data.astype('complex64')
 
+        elif 'nf_ptycho' in src_fname:
+
+            print('Near-field ptychography data')
+            time.sleep(3)
+            print(o.shape)
+            n_ph_per_img = n_ph / o.shape[1]
+            for i in range(o.shape[0]):
+                for j in trange(o.shape[1]):
+                    prj_o = o[i, j]
+                    prj_o_inten = np.abs(prj_o) ** 2
+                    prj_o_inten_noisy = np.random.poisson(prj_o_inten * n_ph_per_img)
+                    # noise = prj_o_inten_noisy - prj_o_inten
+                    # print(np.var(noise))
+                    prj_o_inten_noisy = prj_o_inten_noisy / n_ph_per_img
+                    noise = prj_o_inten_noisy - prj_o_inten
+                    snr = np.var(prj_o_inten) / np.var(noise)
+                    snr_ls.append(snr)
+                    data = np.sqrt(prj_o_inten_noisy)
+                    n[i, j] = data.astype('complex64')
+
         else:
-            print('FF')
+            print('Holography data')
+            time.sleep(3)
             for i in trange(o.shape[0]):
                 prj_o = o[i]
                 prj_o_inten = np.abs(prj_o) ** 2

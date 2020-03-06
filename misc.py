@@ -70,8 +70,11 @@ def create_summary(save_path, locals_dict, var_list=None, preset=None):
         os.makedirs(save_path)
     f = open(os.path.join(save_path, 'summary.txt'), 'w')
     for var_name in var_list:
-        line = '{:<20}{}\n'.format(var_name, str(locals_dict[var_name]))
-        f.write(line)
+        try:
+            line = '{:<20}{}\n'.format(var_name, str(locals_dict[var_name]))
+            f.write(line)
+        except:
+            pass
     f.close()
 
     return
